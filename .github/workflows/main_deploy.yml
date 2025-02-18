@@ -8,17 +8,16 @@ jobs:
   build_and_deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-    # Example step using Render CLI or your chosen deployment tool
-    - name: Install dependencies
-      run: pip install render-cli
+      - name: Install Render CLI
+        run: pip install render-cli
 
-    - name: Deploy to Render
-      run: |
-        render services update aiprofit-stripe-api \
-          --envFile .env \
-          --branch main \
-          --autoDeploy true
-      env:
-        RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      - name: Deploy to Render
+        run: |
+          # Update service name if not "aiprofit-stripe-api"
+          render services update aiprofit-stripe-api \
+            --branch main \
+            --autoDeploy true
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}

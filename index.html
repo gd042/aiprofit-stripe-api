@@ -1,63 +1,91 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Subscribe</title>
-    <script src="https://js.stripe.com/v3/"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Profit HQ Subscription</title>
+  <script src="https://js.stripe.com/v3/"></script>
 </head>
 <body>
-    <h2>Subscribe to AI Profit HQ</h2>
-    <input type="text" id="email" placeholder="Enter email" required>
-    <input type="text" id="name" placeholder="Enter name" required>
-    <button id="subscribe">Subscribe</button>
-    
-    <script>
-        const stripe = Stripe("pk_live_51QteHEIERdqRgVpc46cqpXDGxioUWpnL1l9rDWKIcO1EJRC1TjNYgKHURHvgjGgV7k94m0iI1q90hAlNKD82OtTj00mQFFMCBz");
+  <h1>Subscribe to AI Profit HQ</h1>
+  <p>Enter your details to subscribe:</p>
 
-        document.getElementById("subscribe").addEventListener("click", async () => {
-            const email = document.getElementById("email").value;
-            const name = document.getElementById("name").value;
+  <label for="email">Email:</label>
+  <input type="text" id="email" placeholder="you@example.com" required />
+  <br/><br/>
 
-            if (!email || !name) {
-                alert("Please enter your email and name.");
-                return;
-            }
+  <label for="name">Name:</label>
+  <input type="text" id="name" placeholder="John Doe" required />
+  <br/><br/>
 
-            try {
-                // Fetch latest subscription price dynamically
-                const priceResponse = await fetch("/get-latest-price");
-                const { price_id } = await priceResponse.json();
+  <button id="subscribeBtn">Subscribe for £?? / month</button>
 
-                // Create customer
-                const customerResponse = await fetch("/create-customer", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ email, name })
-                });
+  <script>
+    // Replace with your actual Stripe publishable key
+    const stripe = Stripe("pk_live_51QteHEIERdqRgVpc46cqpXDGxioUWpnL1l9rDWKIcO1EJRC1TjNYgKHURHvgjGgV7k94m0iI1q90hAlNKD82OtTj00mQFFMCBz");
 
-                const customer = await customerResponse.json();
+    document.getElementById("subscribeBtn").addEventListener("click", async () => {
+      const email = document.getElementById("email").value;
+      const name = document.getElementById("name").value;
 
-                // Create subscription session
-                const sessionResponse = await fetch("/create-subscription", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        customer_id: customer.id,
-                        price_id: price_id
-                    })
-                });
+      if (!email || !name) {
+        alert("Please provide an email and name.");
+        return;
+      }
 
-                const { sessionId } = await sessionResponse.json();
-
-                // Redirect to Stripe Checkout
-                const { error } = await stripe.redirectToCheckout({ sessionId });
-                if (error) console.error(error);
-            } catch (err) {
-                console.error("Error processing subscription:", err);
-                alert("An error occurred. Please try again.");
-            }
+      try {
+        // 1) Create a Customer in Stripe
+        const createCustomerRes = await fetch("https://aiprofit-stripe-api.onrender.com/create-customer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, name })
         });
-    </script>
+        const customerData = await createCustomerRes.json();
+
+        if (customerData.error) {
+          console.error("Error creating customer:", customerData.error);
+          alert("Error creating customer.");
+          return;
+        }
+
+        // 2) Create a Subscription (Checkout Session)
+        // Make sure your backend /create-subscription returns { "sessionId": "..." }
+        const price_id = "price_1QtrFlIERdqRgVpcHzn2WECp"; // Adjust if you want a different price
+        const createSubRes = await fetch("https://aiprofit-stripe-api.onrender.com/create-subscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customer_id: customerData.id,
+            price_id: price_id
+          })
+        });
+        const subData = await createSubRes.json();
+
+        if (subData.error) {
+          console.error("Error creating subscription:", subData.error);
+          alert("Error creating subscription.");
+          return;
+        }
+
+        // 3) Redirect user to Stripe Checkout
+        const sessionId = subData.sessionId;
+        if (!sessionId) {
+          console.error("No sessionId returned. Check your backend code!");
+          alert("No sessionId returned from backend. Subscription flow cannot proceed.");
+          return;
+        }
+
+        const { error } = await stripe.redirectToCheckout({ sessionId });
+        if (error) {
+          console.error("Stripe Checkout Error:", error);
+          alert("Stripe Checkout Error. See console for details.");
+        }
+
+      } catch (err) {
+        console.error("Subscription Flow Error:", err);
+        alert("An error occurred. See console for details.");
+      }
+    });
+  </script>
 </body>
 </html>

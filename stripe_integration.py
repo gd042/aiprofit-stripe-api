@@ -3,6 +3,10 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+@app.route('/')
+def home():
+    return "AIProfit Stripe API is Live!"
+
 # Stripe API Keys
 stripe.api_key = "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"
 

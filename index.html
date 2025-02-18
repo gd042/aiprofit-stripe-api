@@ -18,10 +18,10 @@
   <input type="text" id="name" placeholder="John Doe" required />
   <br/><br/>
 
-  <button id="subscribeBtn">Subscribe for £?? / month</button>
+  <button id="subscribeBtn">Subscribe Now</button>
 
   <script>
-    // Replace with your actual Stripe publishable key
+    // Your actual Stripe publishable key
     const stripe = Stripe("pk_live_51QteHEIERdqRgVpc46cqpXDGxioUWpnL1l9rDWKIcO1EJRC1TjNYgKHURHvgjGgV7k94m0iI1q90hAlNKD82OtTj00mQFFMCBz");
 
     document.getElementById("subscribeBtn").addEventListener("click", async () => {
@@ -34,7 +34,7 @@
       }
 
       try {
-        // 1) Create a Customer in Stripe
+        // 1) Create a Stripe Customer
         const createCustomerRes = await fetch("https://aiprofit-stripe-api.onrender.com/create-customer", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -48,10 +48,10 @@
           return;
         }
 
-        // 2) Create a Subscription (Checkout Session)
-        // Make sure your backend /create-subscription returns { "sessionId": "..." }
-        const price_id = "price_1QtrFlIERdqRgVpcHzn2WECp"; // Adjust if you want a different price
-        const createSubRes = await fetch("https://aiprofit-stripe-api.onrender.com/create-subscription", {
+        // 2) Create a Subscription via Checkout Session
+        // If using the checkout.session approach in stripe_integration.py:
+        const price_id = "price_1QtrFlIERdqRgVpcHzn2WECp"; // Adjust as needed
+        const subRes = await fetch("https://aiprofit-stripe-api.onrender.com/create-subscription", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -59,7 +59,7 @@
             price_id: price_id
           })
         });
-        const subData = await createSubRes.json();
+        const subData = await subRes.json();
 
         if (subData.error) {
           console.error("Error creating subscription:", subData.error);
@@ -67,23 +67,23 @@
           return;
         }
 
-        // 3) Redirect user to Stripe Checkout
+        // 3) sessionId is needed for redirectToCheckout
         const sessionId = subData.sessionId;
         if (!sessionId) {
-          console.error("No sessionId returned. Check your backend code!");
-          alert("No sessionId returned from backend. Subscription flow cannot proceed.");
+          console.error("No sessionId returned. Check backend logic!");
+          alert("Subscription flow cannot proceed. No sessionId returned.");
           return;
         }
 
         const { error } = await stripe.redirectToCheckout({ sessionId });
         if (error) {
           console.error("Stripe Checkout Error:", error);
-          alert("Stripe Checkout Error. See console for details.");
+          alert("Stripe Checkout error. See console for details.");
         }
 
       } catch (err) {
         console.error("Subscription Flow Error:", err);
-        alert("An error occurred. See console for details.");
+        alert("An error occurred. Check console for details.");
       }
     });
   </script>

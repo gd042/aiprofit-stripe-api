@@ -25,6 +25,7 @@ def stripe_webhook():
 
     if event['type'] == 'checkout.session.completed':
         print("✅ Payment successful!")
+        return jsonify(success=True), 200
 
     return '', 200
 

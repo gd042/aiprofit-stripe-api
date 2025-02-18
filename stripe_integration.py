@@ -4,7 +4,7 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+stripe.api_key = os.getenv("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")
 
 @app.route('/')
 def home():

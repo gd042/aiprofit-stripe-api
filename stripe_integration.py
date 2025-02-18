@@ -19,15 +19,15 @@ def stripe_webhook():
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
     except ValueError:
-        return 'Invalid payload', 400
+        return jsonify({"error": "Invalid payload"}), 400
     except stripe.error.SignatureVerificationError:
-        return 'Invalid signature', 400
+        return jsonify({"error": "Invalid signature"}), 400
 
     if event['type'] == 'checkout.session.completed':
         print("✅ Payment successful!")
-        return jsonify(success=True), 200
+        return jsonify({"success": True}), 200
 
-    return '', 200
+    return jsonify({"status": "Webhook received"}), 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))

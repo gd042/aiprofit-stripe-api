@@ -4,33 +4,35 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Set your Stripe secret key from environment variables (Render, etc.)
+# Stripe secret key from environment (Render)
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
-# Optional: If you have a separate environment variable for the webhook secret
+# Webhook secret from environment (Render)
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 
 
 # -----------------------------
-# 1) Subscription & Customer Routes
+# 1. Customer & Subscription Routes
 # -----------------------------
-
 @app.route("/create-customer", methods=["POST"])
 def create_customer():
     """
     Creates a Stripe Customer.
-    JSON Input: { "email": "...", "name": "..." }
+    JSON input: { "email": "...", "name": "..." }
     Returns the new Customer object.
     """
     data = request.json
-    if not data or "email" not in data or "name" not in data:
+    if not data:
+        return jsonify({"error": "Missing JSON body"}), 400
+
+    email = data.get("email")
+    name = data.get("name")
+
+    if not email or not name:
         return jsonify({"error": "Missing email or name"}), 400
 
     try:
-        customer = stripe.Customer.create(
-            email=data["email"],
-            name=data["name"]
-        )
+        customer = stripe.Customer.create(email=email, name=name)
         return jsonify(customer)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -39,89 +41,82 @@ def create_customer():
 @app.route("/create-subscription", methods=["POST"])
 def create_subscription():
     """
-    Creates a subscription for the given customer & price.
-    JSON Input: { "customer_id": "cus_...", "price_id": "price_..." }
-    Returns either a Subscription or a Checkout Session ID, depending on your approach.
+    Creates a Stripe Checkout session for subscription or direct subscription.
+    JSON input: { "customer_id": "cus_...", "price_id": "price_..." }
+    Must return { "sessionId": "..." } if using redirectToCheckout in the frontend.
     """
     data = request.json
-    if not data or "customer_id" not in data or "price_id" not in data:
+    if not data:
+        return jsonify({"error": "Missing JSON body"}), 400
+
+    customer_id = data.get("customer_id")
+    price_id = data.get("price_id")
+
+    if not customer_id or not price_id:
         return jsonify({"error": "Missing required fields"}), 400
 
-    customer_id = data["customer_id"]
-    price_id = data["price_id"]
-
     try:
-        # Direct Subscription Approach (requires the customer to have a default payment method attached):
-        subscription = stripe.Subscription.create(
+        # Using Stripe Checkout to collect payment details:
+        session = stripe.checkout.Session.create(
             customer=customer_id,
-            items=[{"price": price_id}],
-            expand=["latest_invoice.payment_intent"]
+            payment_method_types=["card"],
+            line_items=[{"price": price_id, "quantity": 1}],
+            mode="subscription",
+            success_url="https://YOUR_DOMAIN.com/success",
+            cancel_url="https://YOUR_DOMAIN.com/cancel",
         )
-        return jsonify(subscription)
+        return jsonify({"sessionId": session.id})
 
-        # OR, if you want to use Stripe Checkout for new card details:
-        # session = stripe.checkout.Session.create(
+        # OR, if you already have a default payment method & want direct sub:
+        # subscription = stripe.Subscription.create(
         #     customer=customer_id,
-        #     payment_method_types=["card"],
-        #     line_items=[{"price": price_id, "quantity": 1}],
-        #     mode="subscription",
-        #     success_url="https://yourdomain.com/success",
-        #     cancel_url="https://yourdomain.com/cancel",
+        #     items=[{"price": price_id}],
+        #     expand=["latest_invoice.payment_intent"]
         # )
-        # return jsonify({"sessionId": session.id})
+        # return jsonify(subscription)
 
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
 
 # -----------------------------
-# 2) Webhook Route
+# 2. Webhook Route
 # -----------------------------
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
     """
-    Stripe Webhook listener. Verifies signature & handles events like:
+    Stripe Webhook listener for events like:
     - checkout.session.completed
     - invoice.payment_succeeded
     - invoice.payment_failed
     """
     if not WEBHOOK_SECRET:
-        return jsonify({"error": "No WEBHOOK_SECRET set in environment"}), 500
+        return jsonify({"error": "No WEBHOOK_SECRET in environment"}), 500
 
     payload = request.data
     sig_header = request.headers.get("Stripe-Signature")
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, WEBHOOK_SECRET
-        )
+        event = stripe.Webhook.construct_event(payload, sig_header, WEBHOOK_SECRET)
     except stripe.error.SignatureVerificationError:
         return "Invalid signature", 400
     except Exception as e:
         return f"Webhook Error: {str(e)}", 400
 
-    # Handle specific event types
+    # Handle specific events
     if event["type"] == "checkout.session.completed":
-        print("✅ checkout.session.completed event received")
-        # e.g., finalize user account creation or mark them active
+        print("✅ checkout.session.completed - finalize user subscription logic here.")
     elif event["type"] == "invoice.payment_succeeded":
-        print("✅ invoice.payment_succeeded event received")
-        # e.g., confirm subscription payment
+        print("✅ invoice.payment_succeeded - subscription payment successful.")
     elif event["type"] == "invoice.payment_failed":
-        print("❌ invoice.payment_failed event received")
-        # e.g., notify user of failed payment
+        print("❌ invoice.payment_failed - notify user or try again.")
     else:
         print(f"Unhandled event type: {event['type']}")
 
     return "", 200
 
 
-# -----------------------------
-# 3) Run Locally (For Dev)
-# -----------------------------
-
 if __name__ == "__main__":
-    # For local testing: python stripe_integration.py
-    # On Render, gunicorn will handle this (Start Command: gunicorn stripe_integration:app)
+    # Local dev testing: python stripe_integration.py
+    # On Render, set Start Command to: gunicorn stripe_integration:app
     app.run(port=5000, debug=True)

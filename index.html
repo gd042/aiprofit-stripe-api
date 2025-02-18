@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subscribe</title>
+    <script src="https://js.stripe.com/v3/"></script>
+</head>
+<body>
+    <h2>Subscribe to AI Profit HQ</h2>
+    <input type="text" id="email" placeholder="Enter email">
+    <input type="text" id="name" placeholder="Enter name">
+    <button id="subscribe">Subscribe for £1/month</button>
+
+    <script>
+        const stripe = Stripe("pk_live_xxx"); // Replace with your Publishable Key
+
+        document.getElementById("subscribe").addEventListener("click", async () => {
+            const email = document.getElementById("email").value;
+            const name = document.getElementById("name").value;
+
+            const response = await fetch("/create-customer", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, name })
+            });
+
+            const customer = await response.json();
+
+            // Redirect to Stripe Checkout
+            const { sessionId } = await fetch("/create-subscription", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    customer_id: customer.id,
+                    price_id: "price_1QtrFlIERdqRgVpcHzn2WECp",
+                    payment_method_id: "pm_xxx" // Replace dynamically
+                })
+            }).then(res => res.json());
+
+            const { error } = await stripe.redirectToCheckout({ sessionId });
+
+            if (error) console.error(error);
+        });
+    </script>
+</body>
+</html>

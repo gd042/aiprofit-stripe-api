@@ -2,3 +2,8 @@ flask
 stripe
 gunicorn
 uvicorn
+python-dotenv
+openai
+requests
+stripe
+telethon

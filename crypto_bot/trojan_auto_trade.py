@@ -1,116 +1,111 @@
 import os
-import logging
-import json
 import time
+import json
 import requests
 from dotenv import load_dotenv
-from telethon import TelegramClient
+from telethon.sync import TelegramClient
 
-# Load environment variables securely
+# Load environment variables
 load_dotenv()
 
-# 🔹 Set API Credentials (Loaded from Render Environment Variables)
-API_ID = int(os.getenv("API_ID"))
+API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-BIRDEYE_API_KEY = os.getenv("BIRDEYE_API_KEY")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")  # Your Trojan bot token
+BIRDEYE_API_KEY = os.getenv("BIRDEYE_API_KEY")  # Birdeye API Key
 
-# ✅ Setup Telegram Client
+# Initialize Telegram Client
 client = TelegramClient('trojan_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
-# ✅ Configure Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("crypto_trade_log.txt"),
-        logging.StreamHandler()
-    ]
-)
-
-# ✅ Birdeye API Endpoint (Fetch Trending Coins)
+# Birdeye API URL for trending Solana tokens
 BIRDEYE_TRENDING_URL = "https://api.birdeye.so/trending"
+HEADERS = {"X-API-KEY": BIRDEYE_API_KEY}
 
-# ✅ Trojan Bot Commands
-TROJAN_COMMANDS = {
-    "buy": "/buy",    # Buy a token
-    "sell": "/sell",  # Sell a token
-    "balance": "/balance"  # Check balance
-}
+# Trading settings
+TRADE_AMOUNT = 5  # £5 per trade
+STOP_LOSS_PERCENT = 10  # 10% stop loss
+TAKE_PROFIT_PERCENT = 50  # 50% take profit
 
-# ✅ Trade Configuration
-TRADE_AMOUNT = 5  # £5 Test Trades
-SLIPPAGE = 2  # 2% Slippage tolerance
-
-# -------------------------------------
-# 🚀 FUNCTION: Fetch Trending Solana Coins
-# -------------------------------------
-def fetch_trending_coins():
-    headers = {"x-api-key": BIRDEYE_API_KEY}
-    response = requests.get(BIRDEYE_TRENDING_URL, headers=headers)
-    
-    if response.status_code == 200:
-        try:
-            data = response.json()
-            coins = data.get("pairs", [])
-            return coins
-        except json.JSONDecodeError:
-            logging.error("❌ Failed to parse Birdeye API response.")
-    else:
-        logging.error(f"❌ Failed to fetch trending coins. Status: {response.status_code}")
-    
-    return []
-
-# -------------------------------------
-# 🚀 FUNCTION: Execute Trade on Trojan Bot
-# -------------------------------------
-async def execute_trade(token_address, trade_type="buy"):
-    """
-    Sends a command to the Trojan bot to buy or sell a token.
-    """
-    command = TROJAN_COMMANDS[trade_type]
-    trade_message = f"{command} {token_address} {TRADE_AMOUNT} SOL slippage {SLIPPAGE}"
-    
-    logging.info(f"🚀 Executing {trade_type.upper()} trade for token: {token_address}")
-    
+def fetch_trending_tokens():
+    """Fetch trending Solana meme coins from Birdeye API."""
     try:
-        async with client:
-            await client.send_message("@solana_trojanbot", trade_message)
-            logging.info(f"✅ Trade executed: {trade_message}")
+        response = requests.get(BIRDEYE_TRENDING_URL, headers=HEADERS)
+        data = response.json()
+        if "pairs" in data:
+            return data["pairs"]
+        else:
+            print("No trending pairs found.")
+            return None
     except Exception as e:
-        logging.error(f"❌ Trade execution failed: {e}")
+        print(f"Error fetching trending tokens: {e}")
+        return None
 
-# -------------------------------------
-# 🚀 FUNCTION: Trading Strategy Execution
-# -------------------------------------
-async def trade_bot():
-    """
-    Core loop that continuously scans for trending coins and executes trades.
-    """
+def analyze_token(token):
+    """Perform risk analysis on token before buying."""
+    liquidity = token.get("liquidity", 0)
+    holders = token.get("holders", 0)
+    safety_score = 0
+
+    if liquidity > 10000:  # Minimum liquidity check
+        safety_score += 1
+    if holders > 1000:  # Minimum holders check
+        safety_score += 1
+    if token.get("name") and "rug" not in token.get("name").lower():
+        safety_score += 1
+
+    return safety_score >= 2  # Trade only if score is 2 or above
+
+def buy_token(token):
+    """Send buy command to Trojan bot in Telegram."""
+    message = f"/buy {token['pair_address']} {TRADE_AMOUNT} SOL"
+    print(f"Buying {token['name']} - {message}")
+    client.send_message("@solana_trojanbot", message)
+
+def monitor_and_sell(token):
+    """Monitor price movement and sell when profit or stop-loss triggers."""
+    buy_price = token["price"]
+    stop_loss = buy_price * (1 - STOP_LOSS_PERCENT / 100)
+    take_profit = buy_price * (1 + TAKE_PROFIT_PERCENT / 100)
+
     while True:
-        logging.info("🔍 Scanning for trending tokens...")
-        trending_coins = fetch_trending_coins()
-        
-        if not trending_coins:
-            logging.warning("⚠️ No trending tokens found. Retrying in 30 minutes...")
-            time.sleep(1800)  # Wait 30 minutes before retrying
-            continue
-        
-        for coin in trending_coins:
-            token_address = coin.get("address")
-            symbol = coin.get("symbol")
-            
-            if token_address:
-                logging.info(f"🚀 Buying trending token: {symbol} ({token_address})")
-                await execute_trade(token_address, trade_type="buy")
-                time.sleep(10)  # Wait 10 seconds between trades
-        
-        logging.info("🕒 Waiting before next scan...")
-        time.sleep(1800)  # Wait 30 minutes before scanning again
+        time.sleep(60)  # Wait a minute before checking price
+        response = requests.get(f"https://api.birdeye.so/price/{token['pair_address']}", headers=HEADERS)
+        data = response.json()
 
-# -------------------------------------
-# 🚀 RUN THE TRADING BOT
-# -------------------------------------
+        if "price" in data:
+            current_price = data["price"]
+            if current_price <= stop_loss:
+                print(f"Stop-loss hit for {token['name']} - Selling...")
+                sell_token(token)
+                break
+            elif current_price >= take_profit:
+                print(f"Take-profit hit for {token['name']} - Selling...")
+                sell_token(token)
+                break
+        else:
+            print(f"Failed to fetch updated price for {token['name']}.")
+
+def sell_token(token):
+    """Send sell command to Trojan bot in Telegram."""
+    message = f"/sell {token['pair_address']} ALL"
+    print(f"Selling {token['name']} - {message}")
+    client.send_message("@solana_trojanbot", message)
+
+def main():
+    print("🚀 Starting Solana Meme Coin Trading Bot...")
+
+    trending_tokens = fetch_trending_tokens()
+    if not trending_tokens:
+        print("No trending tokens found. Exiting...")
+        return
+
+    for token in trending_tokens[:3]:  # Only trade top 3 trending tokens
+        if analyze_token(token):
+            buy_token(token)
+            monitor_and_sell(token)
+        else:
+            print(f"Skipping {token['name']} due to risk assessment.")
+
+    print("✅ Trading cycle complete. Waiting for next run...")
+
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(trade_bot())
+    main()
